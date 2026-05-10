@@ -65,11 +65,23 @@ io.on('connection', (socket) => {
 });
 
 // Handle React routing, return all requests to React app
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+  const indexPath = path.join(__dirname, '../client/dist/index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('Error sending index.html:', err);
+      res.status(500).send('Front-end files not found. Make sure build is successful.');
+    }
+  });
 });
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+}).on('error', (err) => {
+  console.error('Server failed to start:', err);
 });
