@@ -8,8 +8,8 @@ const app = express();
 app.use(cors());
 
 // The password is set via environment variable for security.
-// Default to 'event2024' if not set (user should change this in Render settings)
-const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'event2024';
+// Default to 'kudan' if not set (user should change this in Render settings)
+const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'kudan';
 
 const server = http.createServer(app);
 const io = new Server(server, {
