@@ -22,7 +22,13 @@ const SOCKET_URL = import.meta.env.PROD
   ? window.location.origin 
   : `http://${window.location.hostname}:3001`;
 
-const socket: Socket = io(SOCKET_URL);
+const socket: Socket = io(SOCKET_URL, {
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 20000,
+});
 
 interface User {
   name: string | null;
@@ -48,6 +54,19 @@ function App() {
   );
 
   useEffect(() => {
+    const handleConnect = () => {
+      console.log('Connected to server');
+      // If we were already joined, re-join on reconnect
+      if (isJoined && name) {
+        socket.emit('join', name);
+        if (currentRoom) {
+          socket.emit('move', currentRoom);
+        }
+      }
+    };
+
+    socket.on('connect', handleConnect);
+
     socket.on('auth-success', () => {
       setIsAuthenticated(true);
       setAuthError('');
