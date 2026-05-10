@@ -32,6 +32,8 @@ io.on('connection', (socket) => {
     if (password === ACCESS_PASSWORD) {
       users[socket.id] = { name: null, room: null, isAuthenticated: true };
       socket.emit('auth-success');
+      // Immediately send the current user list to the newly authenticated user
+      socket.emit('current-users', users);
       console.log(`Socket ${socket.id} authenticated`);
     } else {
       socket.emit('auth-failure', 'パスワードが正しくありません');
