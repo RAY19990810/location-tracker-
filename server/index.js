@@ -31,6 +31,10 @@ io.on('connection', (socket) => {
   // Send current users immediately to the new connection
   socket.emit('current-users', users);
 
+  socket.on('get-users', () => {
+    socket.emit('current-users', users);
+  });
+
   socket.on('join', (name) => {
     users[socket.id] = { name: name, room: null, isAuthenticated: true };
     console.log(`${name} joined`);

@@ -41,25 +41,74 @@ interface Users {
   [id: string]: User;
 }
 
+import { useState, useEffect, useRef } from 'react'
+import { io, Socket } from 'socket.io-client'
+import './App.css'
+
+// ... (FLOORS and SOCKET_URL are same)
+const FLOORS = [
+  {
+    name: "1F",
+    rooms: ["クラシカル", "ガラステーブル", "青山ビル", "ライブラリ（商談1）", "キッチン（商談2）"]
+  },
+  {
+    name: "2F",
+    rooms: ["slitpark", "IT tower", "ヴェレーナ", "桜島", "和室（商談3）"]
+  },
+  {
+    name: "3F",
+    rooms: ["左官", "テラス（商談4）", "倉庫（商談5）"]
+  }
+];
+
+const SOCKET_URL = import.meta.env.PROD 
+  ? window.location.origin 
+  : `http://${window.location.hostname}:3001`;
+
+const socket: Socket = io(SOCKET_URL, {
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 20000,
+  transports: ['polling', 'websocket'],
+});
+
+interface User {
+  name: string | null;
+  room: string | null;
+}
+
+interface Users {
+  [id: string]: User;
+}
+
 function App() {
   const [name, setName] = useState<string>(() => localStorage.getItem('user-name') || '');
   const [isJoined, setIsJoined] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(socket.connected);
   const [users, setUsers] = useState<Users>({});
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
-    () => "Notification" in window && Notification.permission === "granted"
-  );
+  
+  // Use refs to access latest state in event handlers without re-registering
+  const usersRef = useRef<Users>({});
+  const isJoinedRef = useRef(false);
+  const nameRef = useRef(name);
+  const currentRoomRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    isJoinedRef.current = isJoined;
+    nameRef.current = name;
+    currentRoomRef.current = currentRoom;
+  }, [isJoined, name, currentRoom]);
 
   useEffect(() => {
     const handleConnect = () => {
-      console.log('Connected to server');
       setIsConnected(true);
-      // If we were already joined, re-join on reconnect
-      if (isJoined && name) {
-        socket.emit('join', name);
-        if (currentRoom) {
-          socket.emit('move', currentRoom);
+      if (isJoinedRef.current && nameRef.current) {
+        socket.emit('join', nameRef.current);
+        if (currentRoomRef.current) {
+          socket.emit('move', currentRoomRef.current);
         }
       }
     };
@@ -68,40 +117,42 @@ function App() {
       setIsConnected(false);
     };
 
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-
-    socket.on('current-users', (data: Users) => {
-      // Check for movements to show notifications
+    const handleUsers = (data: Users) => {
+      console.log('Received users:', data);
+      
+      // Notification logic
       if (Notification.permission === "granted") {
         Object.keys(data).forEach(id => {
-          if (id !== socket.id && users[id] && data[id].room !== users[id].room && data[id].room) {
-            new Notification(`${data[id].name}さんが「${data[id].room}」に移動しました`);
+          const oldUser = usersRef.current[id];
+          const newUser = data[id];
+          if (id !== socket.id && oldUser && newUser.room !== oldUser.room && newUser.room && newUser.name) {
+            new Notification(`${newUser.name}さんが「${newUser.room}」に移動しました`);
           }
         });
       }
+
+      usersRef.current = data;
       setUsers(data);
       
       const myId = socket.id;
       if (myId && data[myId]) {
         setCurrentRoom(data[myId].room);
       }
-    });
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('current-users', handleUsers);
+
+    // Initial request for users
+    socket.emit('get-users');
 
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
-      socket.off('current-users');
+      socket.off('current-users', handleUsers);
     };
-  }, [users, isJoined, name, currentRoom]);
-
-  const requestNotificationPermission = () => {
-    Notification.requestPermission().then(permission => {
-      if (permission === "granted") {
-        setNotificationsEnabled(true);
-      }
-    });
-  };
+  }, []); // Only register once!
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +169,7 @@ function App() {
     socket.emit('move', room);
   };
 
-  // 1. Name Entry Screen (Always shown first)
+  // ... (rest of the render logic)
   if (!isJoined) {
     return (
       <div className="setup-container">
@@ -142,7 +193,8 @@ function App() {
     )
   }
 
-  // 3. Main Dashboard
+  const activeUsersCount = Object.values(users).filter(u => u.name).length;
+
   return (
     <div className="dashboard">
       <header className="main-header">
@@ -154,11 +206,6 @@ function App() {
             </h2>
           </div>
           <div className="header-actions">
-            {!notificationsEnabled && "Notification" in window && (
-              <button className="notif-btn" onClick={requestNotificationPermission}>
-                通知をオン
-              </button>
-            )}
             <span className="name-tag">{name}さん</span>
           </div>
         </div>
@@ -203,8 +250,14 @@ function App() {
           </section>
         ))}
       </main>
+      
+      <footer className="debug-footer">
+        <p>接続状態: {isConnected ? '✅ 接続中' : '❌ 切断'} | 合計参加者: {activeUsersCount}名</p>
+      </footer>
     </div>
   )
 }
+
+export default App
 
 export default App
