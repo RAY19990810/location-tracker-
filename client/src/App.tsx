@@ -1,51 +1,7 @@
-import { useState, useEffect } from 'react'
-import { io, Socket } from 'socket.io-client'
-import './App.css'
-
-const FLOORS = [
-  {
-    name: "1F",
-    rooms: ["クラシカル", "ガラステーブル", "青山ビル", "ライブラリ（商談1）", "キッチン（商談2）"]
-  },
-  {
-    name: "2F",
-    rooms: ["slitpark", "IT tower", "ヴェレーナ", "桜島", "和室（商談3）"]
-  },
-  {
-    name: "3F",
-    rooms: ["左官", "テラス（商談4）", "倉庫（商談5）"]
-  }
-];
-
-// In production, connect to the same host that served the page
-const SOCKET_URL = import.meta.env.PROD 
-  ? window.location.origin 
-  : `http://${window.location.hostname}:3001`;
-
-const socket: Socket = io(SOCKET_URL, {
-  reconnection: true,
-  reconnectionAttempts: Infinity,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
-  timeout: 20000,
-  transports: ['polling', 'websocket'], // Ensure polling is tried first for better compatibility
-});
-
-interface User {
-  name: string | null;
-  room: string | null;
-  isAuthenticated: boolean;
-}
-
-interface Users {
-  [id: string]: User;
-}
-
 import { useState, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
 import './App.css'
 
-// ... (FLOORS and SOCKET_URL are same)
 const FLOORS = [
   {
     name: "1F",
@@ -90,7 +46,6 @@ function App() {
   const [users, setUsers] = useState<Users>({});
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   
-  // Use refs to access latest state in event handlers without re-registering
   const usersRef = useRef<Users>({});
   const isJoinedRef = useRef(false);
   const nameRef = useRef(name);
@@ -119,18 +74,6 @@ function App() {
 
     const handleUsers = (data: Users) => {
       console.log('Received users:', data);
-      
-      // Notification logic
-      if (Notification.permission === "granted") {
-        Object.keys(data).forEach(id => {
-          const oldUser = usersRef.current[id];
-          const newUser = data[id];
-          if (id !== socket.id && oldUser && newUser.room !== oldUser.room && newUser.room && newUser.name) {
-            new Notification(`${newUser.name}さんが「${newUser.room}」に移動しました`);
-          }
-        });
-      }
-
       usersRef.current = data;
       setUsers(data);
       
@@ -144,7 +87,6 @@ function App() {
     socket.on('disconnect', handleDisconnect);
     socket.on('current-users', handleUsers);
 
-    // Initial request for users
     socket.emit('get-users');
 
     return () => {
@@ -152,7 +94,7 @@ function App() {
       socket.off('disconnect', handleDisconnect);
       socket.off('current-users', handleUsers);
     };
-  }, []); // Only register once!
+  }, []);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,7 +111,6 @@ function App() {
     socket.emit('move', room);
   };
 
-  // ... (rest of the render logic)
   if (!isJoined) {
     return (
       <div className="setup-container">
@@ -257,7 +198,5 @@ function App() {
     </div>
   )
 }
-
-export default App
 
 export default App
