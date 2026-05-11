@@ -28,6 +28,7 @@ const socket: Socket = io(SOCKET_URL, {
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
   timeout: 20000,
+  transports: ['polling', 'websocket'], // Ensure polling is tried first for better compatibility
 });
 
 interface User {
@@ -41,12 +42,9 @@ interface Users {
 }
 
 function App() {
-  const [password, setPassword] = useState<string>('');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [authError, setAuthError] = useState<string>('');
-  
   const [name, setName] = useState<string>(() => localStorage.getItem('user-name') || '');
   const [isJoined, setIsJoined] = useState<boolean>(false);
+  const [isConnected, setIsConnected] = useState<boolean>(socket.connected);
   const [users, setUsers] = useState<Users>({});
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
@@ -56,6 +54,7 @@ function App() {
   useEffect(() => {
     const handleConnect = () => {
       console.log('Connected to server');
+      setIsConnected(true);
       // If we were already joined, re-join on reconnect
       if (isJoined && name) {
         socket.emit('join', name);
@@ -65,21 +64,16 @@ function App() {
       }
     };
 
+    const handleDisconnect = () => {
+      setIsConnected(false);
+    };
+
     socket.on('connect', handleConnect);
-
-    socket.on('auth-success', () => {
-      setIsAuthenticated(true);
-      setAuthError('');
-      sessionStorage.setItem('is-authenticated', 'true');
-    });
-
-    socket.on('auth-failure', (msg: string) => {
-      setAuthError(msg);
-    });
+    socket.on('disconnect', handleDisconnect);
 
     socket.on('current-users', (data: Users) => {
       // Check for movements to show notifications
-      if (Notification.permission === "granted" && isAuthenticated) {
+      if (Notification.permission === "granted") {
         Object.keys(data).forEach(id => {
           if (id !== socket.id && users[id] && data[id].room !== users[id].room && data[id].room) {
             new Notification(`${data[id].name}さんが「${data[id].room}」に移動しました`);
@@ -94,19 +88,12 @@ function App() {
       }
     });
 
-    // Auto-authenticate if previously done in this session
-    if (sessionStorage.getItem('is-authenticated') === 'true' && !isAuthenticated) {
-      // We need to re-emit if socket reconnected or just started
-      // But we need a way to store the password or a token. 
-      // For simplicity in this event tracker, let's just ask again or use a simple persistent "session".
-    }
-
     return () => {
-      socket.off('auth-success');
-      socket.off('auth-failure');
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
       socket.off('current-users');
     };
-  }, [users, isAuthenticated]);
+  }, [users, isJoined, name, currentRoom]);
 
   const requestNotificationPermission = () => {
     Notification.requestPermission().then(permission => {
@@ -114,11 +101,6 @@ function App() {
         setNotificationsEnabled(true);
       }
     });
-  };
-
-  const handleAuth = (e: React.FormEvent) => {
-    e.preventDefault();
-    socket.emit('authenticate', password);
   };
 
   const handleJoin = (e: React.FormEvent) => {
@@ -136,36 +118,13 @@ function App() {
     socket.emit('move', room);
   };
 
-  // 1. Password Screen
-  if (!isAuthenticated) {
-    return (
-      <div className="setup-container">
-        <div className="setup-card">
-          <h1>アクセス制限</h1>
-          <p>イベント関係者専用パスワードを入力してください</p>
-          <form onSubmit={handleAuth}>
-            <input 
-              type="password" 
-              placeholder="パスワード" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-              required
-            />
-            {authError && <p className="error-msg">{authError}</p>}
-            <button type="submit" className="primary-btn">認証する</button>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  // 2. Name Entry Screen
+  // 1. Name Entry Screen (Always shown first)
   if (!isJoined) {
     return (
       <div className="setup-container">
         <div className="setup-card">
           <h1>所在地トラッカー</h1>
+          {!isConnected && <p className="status-warning">サーバーに接続中...</p>}
           <p>表示名を入力して開始してください</p>
           <form onSubmit={handleJoin}>
             <input 

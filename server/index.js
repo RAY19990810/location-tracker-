@@ -28,28 +28,17 @@ const users = {};
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('authenticate', (password) => {
-    if (password === ACCESS_PASSWORD) {
-      users[socket.id] = { name: null, room: null, isAuthenticated: true };
-      socket.emit('auth-success');
-      // Immediately send the current user list to the newly authenticated user
-      socket.emit('current-users', users);
-      console.log(`Socket ${socket.id} authenticated`);
-    } else {
-      socket.emit('auth-failure', 'パスワードが正しくありません');
-    }
-  });
+  // Send current users immediately to the new connection
+  socket.emit('current-users', users);
 
   socket.on('join', (name) => {
-    if (users[socket.id] && users[socket.id].isAuthenticated) {
-      users[socket.id].name = name;
-      console.log(`${name} joined`);
-      io.emit('current-users', users);
-    }
+    users[socket.id] = { name: name, room: null, isAuthenticated: true };
+    console.log(`${name} joined`);
+    io.emit('current-users', users);
   });
 
   socket.on('move', (roomName) => {
-    if (users[socket.id] && users[socket.id].isAuthenticated && users[socket.id].name) {
+    if (users[socket.id] && users[socket.id].name) {
       users[socket.id].room = roomName;
       console.log(`${users[socket.id].name} moved to ${roomName}`);
       io.emit('current-users', users);
